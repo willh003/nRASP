@@ -219,7 +219,7 @@ Function InitCustomScan()
 		should_we_finish += 1
 		print("Image # " + num2str(should_we_finish))
 		SetDataFolder root:Packages:MFP3D:LithoBias // CHECK TO MAKE SURE FOLDER IS RIGHT
-		InitVelocityScan("VelocityDoScanButton_3")
+		InitVelocityScan("VelocityDoDownScanButton_3")
 	endif 
 
 End		//InitCustomScan()
