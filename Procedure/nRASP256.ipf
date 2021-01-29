@@ -8,7 +8,7 @@
 #include ":AsylumResearch:Code3D:Environ"
 
 // INTERNAL NOTES FOR HUEY AFM LABS:
-// HEY WILLIAM, DON'T FORGET to make a new input on the nanorasp panel for the variable: trgt_depth.
+// Make a new input on the nanorasp panel for the variable: trgt_depth.
 // ALSO remove extraneous info from nanorasp panel.
 // ALSO update help file of instructions--they seem outdated at this point.
 // FINALLY note that I changed digmax to digpfr (don't fret, the UPPERCASE and the lowercase versions kept their cases).
