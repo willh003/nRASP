@@ -4,6 +4,7 @@
 // Integrate. Change ht_true to raw data, add in global var functionality
 // Replace padding vals with global 
 // Make sure sizes of all waves are correct
+// I think the big problem right now is with the fit. It's doing funny things for some reason. Could be Nan vals???
 
 Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // Do this only once before starting, to load excel wave of target pattern into experiment
 	// Common Function Call: FlipExcel("G:Igor Custom Procs:Hsquared:Code", "new Comparison AFM", "nmTarget", "A1", "IV256")
@@ -55,7 +56,7 @@ Function/WAVE getIdealSlope(ht_true)
 	Make/O/N=(512-2*padding, 512-2*padding) nanWave, plane_interpolated, ht_variance
 	Make/O/N=3 w_Coef
 	nanWave = NaN
-	Duplicate/O ht_true ht_true_for_fit
+	Duplicate/O ht_true ht_true_for_fit   
 	expandInput(nanWave, ht_true_for_fit, padding)  // This replaces center values with NaN. Curve fitting should ignore NaN vals but keep the registries and index scaling
 	CurveFit/N/Q/NTHR=0/L=(256) poly2D 1, ht_true_for_fit /D
 	plane_big = poly2d(w_Coef,P,Q)
