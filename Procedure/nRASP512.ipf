@@ -8,15 +8,63 @@
 #include ":AsylumResearch:Code3D:Environ"
 
 // TODO: 
-// Integrate. Change ht_true to raw data, add in global var functionality
-// Replace padding vals with global 
-// Make sure sizes of all waves are correct
-// I think the big problem right now is with the fit. Just doing funny things
+// Make the masked portion the entire middle section (so no borders on top)
+// i.e. apply force in a vertical rectangle
+// Maybe do something to remove bumps at the start
+// i.e. normalize everything above zero for the first
+
 
 Override Function/S LithoDriveDAC(TipParms)
         Struct ARTipHolderParms &TipParms
         return "$HeightLoop.Setpoint"
 End //
+
+Function InitCustomScan() 
+	// Sends wave from GetForce(), initializes scan
+	// Input this into ImageLastScan User Callback, then call it from the command line to start experiment
+	// TODO: setscale x to value from Scan Size in master pannel, figure out how to do y with width:height
+	Wave lith_force = getForce()
+	NVAR should_we_finish = root:Packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':should_we_finish // find a time to set this to true
+	NVAR total_images = root:Packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images 
+	if (should_we_finish>=total_images)
+		ARCheckFunc("ARUserCallbackMasterCheck_1", 0)
+	else
+		SendInNewLithoImage(lith_force)
+		should_we_finish += 1
+		print("Image # " + num2str(should_we_finish))
+		SetDataFolder root:Packages:MFP3D:LithoBias // CHECK TO MAKE SURE FOLDER IS RIGHT
+		InitVelocityScan("VelocityDoDownScanButton_3")
+	endif 
+
+End		//InitCustomScan()
+
+Function/WAVE getForce()
+	SetDataFolder root:Packages:MFP3D:XPT:Cypher
+	getCurrentHeight()
+	Wave trgt_scaled, ht_true
+	
+	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
+	NVAR DIGPFR = dfr:DIGPFR			// Size of interval of heights (in nm) where voltage will start converging. Smaller = more gradient in lith_force
+	NVAR VTHRESHOLD = dfr:VTHRESHOLD	// Voltage at which it starts actually digging
+	NVAR VMAX = dfr:VMAX				// Max voltage allowed
+	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
+	NVAR padding = dfr:padding  // Size of border around digging (pixels)
+	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR_guess	
+	
+	Make/O/N = (512-2*padding, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
+	performFlatten(ht_true)
+	shrinkInput(ht_true, ht_variance, padding)
+	
+	ht_to_dig = ht_variance - trgt_scaled
+	v_scaled = (ht_to_dig * vslope) + VSP
+	v_limited = ( (v_scaled > VSP) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
+	print("mean to dig: " + num2str(mean(ht_to_dig)))
+	
+	Make/O/N=(512,512) lith_force
+	lith_force = VSP // Initialize all values to setpoint.  
+	expandInput(v_limited, lith_force, padding) // Imprint applied force using v_limited
+	return lith_force
+end
 
 Function getCurrentHeight()
 	
@@ -41,72 +89,76 @@ Function getCurrentHeight()
 	KillWaves $filename
 End
 
-Function/WAVE getIdealSlope(ht_true)
-	Wave ht_true      // ht_true will be raw data for height (and possibly using deflection)
+Function PerformFlatten(ImageWave)
+	Wave ImageWave
 	
-	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
-	NVAR padding = dfr:padding  // Size of border around digging (pixels)
-	Make/O/N = (512,512) plane_big
-	Make/O/N=(512-2*padding, 512-2*padding) nanWave, plane_interpolated, ht_interpolated, ht_variance
-	Make/O/N=3 w_Coef
-	nanWave = NaN
-	Duplicate/O ht_true ht_true_for_fit 
+	variable padding = 128
+	variable order = 1
+	variable layer = 0
+	Make/O/N=(512) tempParm
+	Make/Free/N=(512-2*padding, 512-2*padding) zeroWave
+	Make/Free/N=(512,512) tempMask
+	zeroWave = 0
+	tempMask = 1
+	expandInput(zeroWave, tempMask, padding)
 	
-	expandInput(nanWave, ht_true_for_fit, padding)  // This replaces center values with NaN. Curve fitting should ignore NaN vals but keep the registries and index scaling
-	CurveFit/N/Q/NTHR=0/L=(256) poly2D 1, ht_true_for_fit /D
-	plane_big = poly2d(w_Coef,P,Q)
-	shrinkInput(plane_big, plane_interpolated, padding) 
-	shrinkInput(ht_true, ht_interpolated, padding) 
+	HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
 
-	ht_variance = ht_interpolated - plane_interpolated
-	return ht_variance
 end
 
-Function/WAVE getForce()
-	SetDataFolder root:Packages:MFP3D:XPT:Cypher
-	getCurrentHeight()
-	Wave trgt_scaled, ht_true
-	
-	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
-	NVAR DIGPFR = dfr:DIGPFR			// Size of interval of heights (in nm) where voltage will start converging. Smaller = more gradient in lith_force
-	NVAR VTHRESHOLD = dfr:VTHRESHOLD	// Voltage at which it starts actually digging
-	NVAR VMAX = dfr:VMAX				// Max voltage allowed
-	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
-	NVAR padding = dfr:padding  // Size of border around digging (pixels)
-	
-	Make/O/N = (512-2*padding, 512-2*padding) v_scaled, v_limited, ht_to_dig
-	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR_guess	
-	Wave ht_variance = getIdealSlope(ht_true)	
-	
-	ht_to_dig = ht_variance - trgt_scaled
-	v_scaled = (ht_to_dig * vslope) + VSP
-	v_limited = ( (v_scaled > VSP) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
-	print("mean to dig: " + num2str(mean(ht_to_dig)))
-	
-	Make/O/N=(512,512) lith_force
-	lith_force = VSP // Initialize all values to setpoint.  
-	expandInput(v_limited, lith_force, padding) // Imprint applied force using v_limited
-	return lith_force
-end
+Function HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
+	Wave ImageWave
+	Variable order
+	Variable layer
+	Wave TempParm
+	Wave tempMask
 
-Function InitCustomScan() 
-	// Sends wave from GetForce(), initializes scan
-	// Input this into ImageLastScan User Callback, then call it from the command line to start experiment
-	// TODO: setscale x to value from Scan Size in master pannel, figure out how to do y with width:height
-	Wave lith_force = getForce()
-	NVAR should_we_finish = root:Packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':should_we_finish // find a time to set this to true
-	NVAR total_images = root:Packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images 
-	if (should_we_finish>=total_images)
-		ARCheckFunc("ARUserCallbackMasterCheck_1", 0)
-	else
-		SendInNewLithoImage(lith_force)
-		should_we_finish += 1
-		print("Image # " + num2str(should_we_finish))
-		SetDataFolder root:Packages:MFP3D:LithoBias // CHECK TO MAKE SURE FOLDER IS RIGHT
-		InitVelocityScan("VelocityDoDownScanButton_3")
-	endif 
+	Variable output = 0
+	variable points = DimSize(ImageWave,0)
+	variable lines = DimSIze(ImageWave,1)
+	variable i
+	Variable minCount = Limit(points*.1,4,10)		//MinCount is from 4 to 10.
+	
+	switch (order)
+		case 0:								//just take out the offset
 
-End		//InitCustomScan()
+			Make/O/N=(points,lines) tempWave	//make a temp wave
+			tempWave = ImageWave[p][q][layer]
+			tempWave /= tempMask					//this changes the mask=0 points to Inf, so they aren't used in the WaveStats
+			for (i = 0;i < lines;i += 1)		//loop until all the lines are done
+				WaveStats/M=1/Q/R=[(i*points),(i+1)*points-1] tempWave	//do wavestats for one line
+				if (!IsNaN(V_avg))					//check if this is a number, not just NaN
+					ImageWave[][i][layer] -= V_avg		//subtract the offset
+				endif
+				TempParm[I][0] = V_Avg
+			endfor
+
+			break
+		
+		case 1:								// take out slope, offset
+			Make/O/N=(points)/FREE LineWave, LineMask
+			CopyScales/P ImageWave LineWave, LineMask		//copy the x scaling
+			Make/O/N=(order+1)/D W_coef
+			for (i = 0;i < lines;i += 1)				//loop through all of the lines
+				LineWave = ImageWave[p][i][layer]					//copy the line into LineWave
+				LineMask = tempMask[p][i]						//copy the line from the mask
+				if (sum(LineMask,leftx(LineMask),rightx(LineMask)) > minCount)		//make sure that there are at least 10 points
+					CurveFit/Q/N line LineWave /M=LineMask	//do a line fit using the mask
+					ImageWave[][i][layer] -= poly(W_coef,x)			//subtract the poly fit from each line
+					TempParm[I][] = W_Coef[Q]
+				else											//if there are not 10 unmasked points
+					WaveStats/Q/M=1 LineWave
+					ImageWave[][i][layer] -= V_avg			//then just subtract the average
+					TempParm[I][0] = V_avg
+				endif
+			endfor
+
+			//KillWaves/Z LineWave, LineMask, w_coef				//kill the temp waves
+			break
+	endswitch
+	Return output
+End // HHMaskedFlatten
+
 
 Function shrinkInput(bigWave, outWave, padding)  // Take middle values from 512x512 wave (based on border size)
 	Wave bigWave, outWave
@@ -187,7 +239,7 @@ Function FlipExcel(pathName, fileName, worksheetName, startCell, endCell) // Do 
 	Redimension/N=(65536) OneD_trgt
 	Make/O/N = (256,256) trgt_scaled
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
-	trgt_scaled = (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
+	trgt_scaled = -1 * (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
 
     	return 0            // Success
 End
@@ -320,3 +372,28 @@ Function NanoRASP_Panel() : Panel
 	SetVariable padding,help={"Border size around where force is applied (pixels)"},font="Arial"
 	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
 End
+
+Function simulation(lith_force, test_data, iterations)
+	Wave lith_force, test_data
+	Variable iterations
+	Wave ht_true, ht_to_dig, mean_ht_to_dig
+	Variable DIGPFR_actual = 1
+	Variable i = 0
+	Variable mean_height
+	
+	do 
+		main()
+		test_data -= lith_force * DIGPFR_actual / (10^9)
+		mean_height =  mean(ht_to_dig)
+		redimension/n = (i + 1) mean_ht_to_dig
+		mean_ht_to_dig[i] = mean_height
+		print("mean to dig on trial " + num2str(i + 1) + ": " + num2str(mean_height))
+		print("max to dig on trial " + num2str(i + 1) + ": " + num2str(waveMax(ht_to_dig)))
+		i += 1
+	while (i < iterations)
+end
+
+Function reset()
+	wave test
+	duplicate/o test, ht_true
+end
