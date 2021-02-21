@@ -68,13 +68,110 @@ Function/WAVE getIdealSlope(ht_true)
 	return ht_variance
 end
 
+Function/WAVE flattenSlope(ht_true)
+	Wave ht_true      // ht_true will be raw data for height (and possibly using deflection)
+	
+	variable padding = 128
+	Make/O/N=(512-2*padding, 512-2*padding) nanWave
+	Make/O/N=(512,512) temporaryFlatten
+	nanWave = NaN
+	Duplicate/O ht_true ht_true_for_fit 
+	expandInput(nanWave, ht_true_for_fit, padding)
+	
+	Variable ScanPoints = DimSize(ht_true,0)					//get the scanpoints
+	Variable ScanLines = DimSize(ht_true,1)					//get the scanlines
+	Variable Order = 1
+	Variable Layer = 0
+	
+	Make/O/D/N=(3) ParmWave
+	WaveStats/Q/R=[layer*ScanPoints*ScanLines,(layer+1)*ScanPoints*ScanLines-1]/M=1 ht_true
+	ParmWave = {V_Avg,0,0}
+	//ARC_SubtractPoly2D(ht_true_for_fit,ParmWave,0,1,0,1,0,DimSize(ht_true_for_fit,1)-1,Layer)
+	temporaryFlatten[][0,511][Layer] = ParmWave[0]+ParmWave[1]*(P*1+0)+ParmWave[2]*(Q*1+0)
+	
+	ht_true -= temporaryFlatten
+	return ht_true
+end
+
+Function PerformFlatten(ImageWave)
+	Wave ImageWave
+	
+	variable padding = 128
+	variable order = 1
+	variable layer = 0
+	Make/O/N=(512) tempParm
+	Make/Free/N=(512-2*padding, 512-2*padding) zeroWave
+	Make/Free/N=(512,512) tempMask
+	zeroWave = 0
+	tempMask = 1
+	expandInput(zeroWave, tempMask, padding)
+	
+	HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
+
+end
+
+Function HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
+	Wave ImageWave
+	Variable order
+	Variable layer
+	Wave TempParm
+	Wave tempMask
+
+	Variable output = 0
+	variable points = DimSize(ImageWave,0)
+	variable lines = DimSIze(ImageWave,1)
+	variable i
+	Variable minCount = Limit(points*.1,4,10)		//MinCount is from 4 to 10.
+	
+	switch (order)
+		case 0:								//just take out the offset
+
+			Make/O/N=(points,lines) tempWave	//make a temp wave
+			tempWave = ImageWave[p][q][layer]
+			tempWave /= tempMask					//this changes the mask=0 points to Inf, so they aren't used in the WaveStats
+			for (i = 0;i < lines;i += 1)		//loop until all the lines are done
+				WaveStats/M=1/Q/R=[(i*points),(i+1)*points-1] tempWave	//do wavestats for one line
+				if (!IsNaN(V_avg))					//check if this is a number, not just NaN
+					ImageWave[][i][layer] -= V_avg		//subtract the offset
+				endif
+				TempParm[I][0] = V_Avg
+			endfor
+
+			break
+		
+		case 1:								// take out slope, offset
+			Make/O/N=(points)/FREE LineWave, LineMask
+			CopyScales/P ImageWave LineWave, LineMask		//copy the x scaling
+			Make/O/N=(order+1)/D W_coef
+			for (i = 0;i < lines;i += 1)				//loop through all of the lines
+				LineWave = ImageWave[p][i][layer]					//copy the line into LineWave
+				LineMask = tempMask[p][i]						//copy the line from the mask
+				if (sum(LineMask,leftx(LineMask),rightx(LineMask)) > minCount)		//make sure that there are at least 10 points
+					CurveFit/Q/N line LineWave /M=LineMask	//do a line fit using the mask
+					ImageWave[][i][layer] -= poly(W_coef,x)			//subtract the poly fit from each line
+					TempParm[I][] = W_Coef[Q]
+				else											//if there are not 10 unmasked points
+					WaveStats/Q/M=1 LineWave
+					ImageWave[][i][layer] -= V_avg			//then just subtract the average
+					TempParm[I][0] = V_avg
+				endif
+			endfor
+
+			//KillWaves/Z LineWave, LineMask, w_coef				//kill the temp waves
+			break
+	endswitch
+	Return output
+End // HHMaskedFlatten
+
 Function main()
 	Wave trgt_scaled, ht_true
 	Variable VMAX = 6, VTHRESHOLD = 2, DIGPFR_guess = 10, VSP = 0   // Replace with global
 	Variable padding = 128 // Replace with global
 	
-	Make/O/N = (512-2*padding, 512-2*padding) v_scaled, v_limited, ht_to_dig
-	Wave ht_variance = getIdealSlope(ht_true)
+	Make/O/N = (512-2*padding, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
+	performFlatten(ht_true)
+	shrinkInput(ht_true, ht_variance, padding)
+	
 	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR_guess		
 	
 	ht_to_dig = ht_variance - trgt_scaled
