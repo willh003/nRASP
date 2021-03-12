@@ -1,0 +1,150 @@
+Function ARFlatten(ImageWave,Order,Layer,CoefWave,Mask,OffsetMethod)
+	Wave ImageWave
+	Variable Order, Layer
+	Wave/D CoefWave
+	Wave/Z/B Mask
+	Variable OffsetMethod
+	
+	
+	
+	Variable ScanPoints = DimSize(ImageWave,0)					//get the scanpoints
+	Variable ScanLines = DimSize(ImageWave,1)					//get the scanlines
+	Variable MinCount = Limit(ScanPoints*.1,4,10)		//MinCount is from 4 to 10.
+	variable hasPits = 1
+	Variable i, Offset, PlanefitOrder
+	String JHand = "SpecialFlatten"
+	
+	
+	if (Order == 4)		//histograms must first do a planefit
+		InitJbar(JHand,num2str(ScanLines-1)+",","Flattening","","")
+		Make/FREE/N=(4)/D PlaneFitCoef
+		ARPlaneFit("DoX_1",ImageWave,Order,Layer,PlaneFitCoef,Mask,OffsetMethod)
+		UpdatePlanefitNote(ImageWave,Layer,PlaneFitCoef)
+	endif
+	
+	
+	if (Order >= 4)
+		Redimension/D/N=(2,ScanLines) CoefWave
+	else
+		Redimension/D/N=(order+1,scanLines) CoefWave
+	endif
+	FastOp CoefWave = (0)
+	Make/FREE/D/N=(3) ParmWave
+	
+	String DataFolder = ""
+	if (WaveType(CoefWave,2) == 2)		//free wave
+	else
+		DataFolder = GetWavesDataFolder(CoefWave,1)
+	endif
+	
+	
+	switch (Order)
+		case 0:								//just take out the offset
+		case 1:								//take out the offset and slope
+		case 2:												//subtract a 2nd order polynomial
+		case 3:												//subtract a 3rd order polynomial
+			if (!WaveExists(Mask))
+				ARC_Flatten(ImageWave,Order,Layer,CoefWave)
+			else
+				ARC_MaskedFlatten(ImageWave,order,layer,CoefWave,Mask)		//low level code that does it all
+			endif
+			Variable dx = DimDelta(ImageWave,0)
+			if (Order > 0)
+				CoefWave[1,][] /= dx^P		//low level code works in units of P, but when we undo the calc we work in meters.
+			endif
+			break
+			
+		case 4:		//histogram
+			Make/N=(ScanPoints)/O $DataFolder+"LineWave",$DataFolder+"LineMask",$DataFolder+"PrevLine",$DataFolder+"PrevHist",$DataFolder+"Corr"
+			Wave LineWave = $DataFolder+"LineWave"
+			Wave LineMask = $DataFolder+"LineMask"
+			Wave PrevLine = $DataFolder+"PrevLine"
+			Wave PrevHist = $DataFolder+"PrevHist"
+			Wave Corr = $DataFolder+"Corr"
+			CopyScales/P ImageWave LineWave, LineMask,PrevLine		//copy the x scaling\
+			
+			Make/O/N=4/D $DataFolder+"W_coef"
+			Wave/D W_Coef = $DataFolder+"W_Coef"
+			PrevLine = ImageWave[P][0][Layer]
+			if (!WaveExists(Mask))
+				LineMask = 1
+			else
+				LineMask = Mask[P][0]
+			endif
+			if (sum(LineMask,leftx(LineMask),rightx(LineMask)) > MinCount)		//make sure that there are at least 10 points
+				PrevLine = LineMask[P]==0 ? Nan : PrevLine[P]
+			endif
+			WaveStats/Q/M=1 PrevLine
+			ImageWave[][0][Layer] -= V_Avg
+			CoefWave[0][0] = V_Avg
+			PrevLine -= V_avg
+			
+			for (i = 1;i < ScanLines;i += 1)				//loop through all of the lines
+				Jbar(JHand,I,0,.01)
+				LineWave = ImageWave[p][i][layer]					//copy the line into LineWave
+				if (WaveExists(Mask))
+					LineMask = Mask[p][i]						//copy the line from the mask
+				//else
+					//LineMask is already 1
+				endif
+				if (sum(LineMask,leftx(LineMask),rightx(LineMask)) > MinCount)		//< 100 points give poor histograms, can't corrilate well.
+					//But since we have a failsafe (make sure the W_Coef is within range), we will try it with as few as 10 points.
+					LineWave = LineMask[P]==0 ? Nan : LineWave[P]
+					Redimension/N=(DimSize(PrevHist,0)) Corr
+					SetScale/I x,min(Wavemin(PrevLine),Wavemin(LineWave)),Max(WaveMax(PrevLine),WaveMax(LineWave)),PrevHist,Corr
+					Histogram/B=2 PrevLine,PrevHist
+					Histogram/B=2 LineWave,Corr
+					SetScale/P x,0,Dimdelta(Corr,0),Corr,PrevHist
+					Correlate PrevHist,Corr
+					CalcHistoMax(Corr,W_Coef)
+					Offset = W_Coef[2]
+					if (((Offset > leftx(Corr)) && (Offset < rightx(Corr))) && (numtype(Offset) == 0))
+						//ImageWave[][i][layer] -= Offset
+						FastOp PrevLine = LineWave+(-Offset)			//only update the previous line if it used a histogram.
+						//CopyScales LineWave,PrevLine
+					else
+						Offset = Mean(LineWave)
+//						WaveStats/Q/M=1 LineWave
+//						Offset = V_Avg
+						//ImageWave[][i][Layer] -= V_Avg
+					endif
+					
+				else											//if there are not 10 unmasked points
+					Offset = Mean(LineWave)
+//					WaveStats/M=1/Q LineWave
+//					Offset = V_Avg
+					//ImageWave[][i][layer] -= V_avg			//then just subtract the average
+				endif
+				
+				//ImageWave[][I][Layer] -= Offset
+				ParmWave = {Offset,0,0}
+				ARC_SubtractPoly2D(ImageWave,ParmWave,0,1,0,1,I,I,Layer)
+				CoefWave[0][I] = Offset
+			
+				
+			endfor
+			//KillWaves/Z LineWave, LineMask, PrevLine, PrevHist, Corr, w_coef				//kill the temp waves
+			DoWindow/K $JHand
+			break
+			
+		case 5:
+			hasPits = 0
+			//Dont break
+		case 6:
+
+			MaskFlatten(ImageWave,CoefWave,layer,hasPits)
+			
+			break
+
+	endswitch	
+	if (OffsetMethod && WaveExists(Mask))
+		OffsetUsesMaskFunc(ImageWave,Mask,layer)
+	else
+		WaveStats/Q/R=[layer*ScanPoints*ScanLines,(layer+1)*ScanPoints*ScanLines-1]/M=1 ImageWave									//calculate the average
+		//ImageWave[][][Layer] -= V_avg			//subtract out the average
+		ParmWave = {V_Avg,0,0}
+		ARC_SubtractPoly2D(ImageWave,ParmWave,0,1,0,1,0,DimSize(ImageWave,1)-1,Layer)
+
+	endif
+	
+End //ARFlatten

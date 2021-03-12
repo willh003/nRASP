@@ -165,7 +165,7 @@ End // HHMaskedFlatten
 
 Function main()
 	Wave trgt_scaled, ht_true
-	Variable VMAX = 6, VTHRESHOLD = 2, DIGPFR_guess = 10, VSP = 0   // Replace with global
+	Variable VMAX = 8, VTHRESHOLD = 5, DIGPFR_guess = 1, VSP = -4   // Replace with global
 	Variable padding = 128 // Replace with global
 	
 	Make/O/N = (512-2*padding, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
@@ -217,8 +217,8 @@ Function simulation(lith_force, test_data, iterations)
 	
 	do 
 		main()
-		test_data -= lith_force * DIGPFR_actual / (10^9)
 		mean_height =  mean(ht_to_dig)
+		test_data -= lith_force * DIGPFR_actual / (10^9)
 		redimension/n = (i + 1) mean_ht_to_dig
 		mean_ht_to_dig[i] = mean_height
 		print("mean to dig on trial " + num2str(i + 1) + ": " + num2str(mean_height))

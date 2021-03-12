@@ -41,7 +41,7 @@ End		//InitCustomScan()
 Function/WAVE getForce()
 	SetDataFolder root:Packages:MFP3D:XPT:Cypher
 	getCurrentHeight()
-	Wave trgt_scaled, ht_true
+	Wave trgt_scaled, ht_true, mean_ht_to_dig
 	
 	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
 	NVAR DIGPFR = dfr:DIGPFR			// Size of interval of heights (in nm) where voltage will start converging. Smaller = more gradient in lith_force
@@ -49,7 +49,7 @@ Function/WAVE getForce()
 	NVAR VMAX = dfr:VMAX				// Max voltage allowed
 	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
 	NVAR padding = dfr:padding  // Size of border around digging (pixels)
-	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR_guess	
+	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR	
 	
 	Make/O/N = (512-2*padding, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
 	performFlatten(ht_true)
@@ -58,8 +58,12 @@ Function/WAVE getForce()
 	ht_to_dig = ht_variance - trgt_scaled
 	v_scaled = (ht_to_dig * vslope) + VSP
 	v_limited = ( (v_scaled > VSP) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
-	print("mean to dig: " + num2str(mean(ht_to_dig)))
 	
+	variable mean_to_dig = mean(ht_to_dig)
+	redimension/n = (dimsize(mean_ht_to_dig, 0) + 1) mean_ht_to_dig
+	mean_ht_to_dig[dimsize(mean_ht_to_dig, 0) - 1] = mean_to_dig
+	print("mean to dig: " + num2str(mean_to_dig))
+
 	Make/O/N=(512,512) lith_force
 	lith_force = VSP // Initialize all values to setpoint.  
 	expandInput(v_limited, lith_force, padding) // Imprint applied force using v_limited
@@ -73,7 +77,7 @@ Function getCurrentHeight()
 	NVAR DFCHANNEL = dfr:DFCHANNEL		// Channel containing defl data
 	NVAR HTCHANNEL = dfr:HTCHANNEL		// Channel containing ht data
 	
-	Make/O/N = (256, 256) lith_current_all, lith_ht, lith_defl, ht_true
+	Make/O/N = (512, 512) lith_current_all, lith_ht, lith_defl, ht_true
 	String filename = GetFilename()	
 	String indexString = GS("SaveImage")
 	NewPath/O folderpath, indexstring  	// folderpath is the symbolic path to the data folder specified in the master pannel
@@ -92,7 +96,8 @@ End
 Function PerformFlatten(ImageWave)
 	Wave ImageWave
 	
-	variable padding = 128
+	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
+	NVAR padding = dfr:padding
 	variable order = 1
 	variable layer = 0
 	Make/O/N=(512) tempParm
@@ -202,7 +207,7 @@ Function/T GetFilename() // Returns name of current image file for access by Get
 	return filename
 End
 
-Function FlipExcel(pathName, fileName, worksheetName, startCell, endCell) // Do this only once before starting, to load excel wave of target pattern into experiment
+Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // Do this only once before starting, to load excel wave of target pattern into experiment
 	// Common Function Call: FlipExcel("G:Igor Custom Procs:Hsquared:Code", "new Comparison AFM", "nmTarget", "A1", "IV256")
     	String pathName                     // Name of Igor symbolic path or "" to get dialog
     	String fileName                         // Name of file to load or "" to get dialog
@@ -240,7 +245,7 @@ Function FlipExcel(pathName, fileName, worksheetName, startCell, endCell) // Do 
 	Make/O/N = (256,256) trgt_scaled
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
 	trgt_scaled = -1 * (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
-
+	make/n=0 mean_ht_to_dig
     	return 0            // Success
 End
 
@@ -254,7 +259,7 @@ Function/DF CreatePackageData() // Called only from GetPackageDFREF
 	// Create a data folder reference variable
 	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
 	// Create and initialize globals
-	Variable/G dfr:DIGPFR= 10
+	Variable/G dfr:DIGPFR= 10	// Nm per frame at VMAX
 	Variable/G dfr:VTHRESHOLD = 4
 	Variable/G dfr:VMAX = 8
 	Variable/G dfr:VSP = 3
@@ -328,6 +333,7 @@ End
 
 Function NanoRASP_Panel() : Panel
 	PauseUpdate; Silent 1		// building window...
+	 DFREF dfr = GetPackageDFREF()
 	NewPanel /W=(730,94,1347,363) as "NanoRASP Panel"
 	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=4, frameInset=3
 	ShowTools/A
@@ -368,7 +374,7 @@ Function NanoRASP_Panel() : Panel
 	SetVariable total_images,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable total_images,font="Arial"
 	SetVariable total_images,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images
-	SetVariable padding,pos={458,142},size={120,16},title="Border Width (px)"
+	SetVariable padding,pos={458,142},size={150,16},title="Border Width (px)"
 	SetVariable padding,help={"Border size around where force is applied (pixels)"},font="Arial"
 	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
 End
@@ -382,7 +388,7 @@ Function simulation(lith_force, test_data, iterations)
 	Variable mean_height
 	
 	do 
-		main()
+		getForce()
 		test_data -= lith_force * DIGPFR_actual / (10^9)
 		mean_height =  mean(ht_to_dig)
 		redimension/n = (i + 1) mean_ht_to_dig
