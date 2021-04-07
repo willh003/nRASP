@@ -49,9 +49,10 @@ Function/WAVE getForce()
 	NVAR VMAX = dfr:VMAX				// Max voltage allowed
 	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
 	NVAR padding = dfr:padding  // Size of border around digging (pixels)
+	NVAR DRIFT = dfr:DRIFT
 	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR	
 	
-	Make/O/N = (512-2*padding, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
+	Make/O/N = (512, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
 	performFlatten(ht_true)
 	shrinkInput(ht_true, ht_variance, padding)
 	
@@ -66,7 +67,7 @@ Function/WAVE getForce()
 
 	Make/O/N=(512,512) lith_force
 	lith_force = VSP // Initialize all values to setpoint.  
-	expandInput(v_limited, lith_force, padding) // Imprint applied force using v_limited
+	expandInput(v_limited, lith_force, padding, DRIFT) // Imprint applied force using v_limited
 	return lith_force
 end
 
@@ -101,11 +102,11 @@ Function PerformFlatten(ImageWave)
 	variable order = 1
 	variable layer = 0
 	Make/O/N=(512) tempParm
-	Make/Free/N=(512-2*padding, 512-2*padding) zeroWave
+	Make/Free/N=(512-2*padding, 512) zeroWave
 	Make/Free/N=(512,512) tempMask
 	zeroWave = 0
 	tempMask = 1
-	expandInput(zeroWave, tempMask, padding)
+	expandInput(zeroWave, tempMask, padding, 0)
 	
 	HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
 
@@ -168,24 +169,21 @@ End // HHMaskedFlatten
 Function shrinkInput(bigWave, outWave, padding)  // Take middle values from 512x512 wave (based on border size)
 	Wave bigWave, outWave
 	Variable padding
-	Variable i, j
-	for (i = padding; i < 512 - padding; i+=1)
-		for (j = padding; j < 512 - padding; j+=1)
-			outWave[i - padding][j - padding] = bigWave[i][j]
-		endfor  
-	endfor  
-
+	Duplicate/O bigWave outWave
+	deletepoints/M=0 512-padding, padding, outWave
+	deletepoints/M=0 0, padding, outWave
 end
 
-Function expandInput(smallWave, outWave, padding) // Expand smaller wave to 512x512
-	Wave smallWave, outWave
-	Variable padding
-	Variable i, j
-	for (i = padding; i < 512 - padding; i+=1)
-		for (j = padding; j < 512 - padding; j+=1)
-			outWave[i][j] = smallWave[i - padding][j - padding]
-		endfor  
-	endfor  
+function expandInput(smallWave, outWave, padding, shiftRight)
+	wave smallWave, outWave
+	variable padding, shiftRight // Shift due to horizontal drift (px)
+	variable i, j
+
+	for (i = padding + shiftRight; i < 512 - padding + shiftRight; i+=1)
+		for (j = 0; j < 512; j+=1)
+			outWave[i][j] = smallWave[i - padding][j]
+		endfor
+	endfor	
 end
 
 Function/T GetFilename() // Returns name of current image file for access by GetForce()
@@ -272,6 +270,7 @@ Function/DF CreatePackageData() // Called only from GetPackageDFREF
 	Variable/G dfr:increment_check = 0
 	Variable/G dfr:trgt_depth = 25
 	Variable/G dfr:padding = 128
+	Variable/G dfr:DRIFT = 0
 	return dfr
 End
 
@@ -319,8 +318,8 @@ Function InitButton(ba) : ButtonControl // Handles Reset Experiment queries
 	STRUCT WMButtonAction &ba
 	switch(ba.eventCode)
 		case 2: // Mouse up
-			if (CmpStr(ba.ctrlName,"bExp") == 0)
-				InitCustomScan()
+			if (CmpStr(ba.ctrlName,"bInit") == 0)
+				//InitCustomScan()
 			endif
 		break
 	endswitch
@@ -367,16 +366,19 @@ Function NanoRASP_Panel() : Panel
 	Button bExp,help={"Reset the experiment"}
 	Button bInit,pos={257,221},size={116,20},proc=InitButton,title="Initialize (Take Care!!)"
 	Button bInit,help={"Reset the experiment"}
-	SetVariable trgt_depth,pos={188,142},size={120,18},title="Target Depth"
+	SetVariable trgt_depth,pos={178,142},size={120,18},title="Target Depth"
 	SetVariable trgt_depth,help={"target depth"},font="Arial"
 	SetVariable trgt_depth,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth
 	SetVariable total_images,pos={187,180},size={120,18},title="Total Images"
 	SetVariable total_images,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable total_images,font="Arial"
 	SetVariable total_images,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images
-	SetVariable padding,pos={458,142},size={150,16},title="Border Width (px)"
+	SetVariable padding,pos={450,142},size={150,16},title="Border Width (px)"
 	SetVariable padding,help={"Border size around where force is applied (pixels)"},font="Arial"
 	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
+	SetVariable drift,pos={300,142},size={150,16},title="Horiz Drift (px)"
+	SetVariable drift,help={"Horizontal offset due to tip drift"},font="Arial"
+	SetVariable drift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DRIFT
 End
 
 Function simulation(lith_force, test_data, iterations)
