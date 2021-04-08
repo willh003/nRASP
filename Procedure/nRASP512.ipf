@@ -23,6 +23,7 @@ Function InitCustomScan()
 	// Sends wave from GetForce(), initializes scan
 	// Input this into ImageLastScan User Callback, then call it from the command line to start experiment
 	// TODO: setscale x to value from Scan Size in master pannel, figure out how to do y with width:height
+	SetDataFolder root:Packages:MFP3D:XPT:Cypher
 	Wave lith_force = getForce()
 	NVAR should_we_finish = root:Packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':should_we_finish // find a time to set this to true
 	NVAR total_images = root:Packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images 
@@ -51,8 +52,8 @@ Function/WAVE getForce()
 	NVAR padding = dfr:padding  // Size of border around digging (pixels)
 	NVAR DRIFT = dfr:DRIFT
 	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR	
-	
-	Make/O/N = (512, 512-2*padding) ht_variance, v_scaled, v_limited, ht_to_dig
+	print(num2str(512-2*padding))
+	Make/O/N = (512-2*padding, 512) ht_variance, v_scaled, v_limited, ht_to_dig
 	performFlatten(ht_true)
 	shrinkInput(ht_true, ht_variance, padding)
 	
@@ -78,7 +79,8 @@ Function getCurrentHeight()
 	NVAR DFCHANNEL = dfr:DFCHANNEL		// Channel containing defl data
 	NVAR HTCHANNEL = dfr:HTCHANNEL		// Channel containing ht data
 	
-	Make/O/N = (512, 512) lith_current_all, lith_ht, lith_defl, ht_true
+	Make/O/N = (512, 512) lith_current_all, lith_ht, lith_defl
+	Make/O/N = (512, 512) ht_true
 	String filename = GetFilename()	
 	String indexString = GS("SaveImage")
 	NewPath/O folderpath, indexstring  	// folderpath is the symbolic path to the data folder specified in the master pannel
@@ -101,7 +103,7 @@ Function PerformFlatten(ImageWave)
 	NVAR padding = dfr:padding
 	variable order = 1
 	variable layer = 0
-	Make/O/N=(512) tempParm
+	Make/Free/N=(512) tempParm
 	Make/Free/N=(512-2*padding, 512) zeroWave
 	Make/Free/N=(512,512) tempMask
 	zeroWave = 0
@@ -213,6 +215,7 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
     	String startCell                            // e.g., "B1"
     	String endCell                          // e.g., "J100"
     	String finalWave = "trgt"			// Name of the wave that will contain the info in igor memory
+    	SetDataFolder root:Packages:MFP3D:XPT:Cypher
     	if ((strlen(pathName)==0) || (strlen(fileName)==0))
         	// Display dialog looking for file.
         	Variable refNum
@@ -239,11 +242,11 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
     	Printf "Created numeric matrix wave %s containing cells %s to %s in worksheet \"%s\"\r", finalWave, startCell, endCell, worksheetName
 	Duplicate/Free/WAVE $finalwave, OneD_trgt
 	Duplicate/Free/WAVE $finalwave, TwoD_trgt
-	Redimension/N=(65536) OneD_trgt
-	Make/O/N = (256,256) trgt_scaled
+	Redimension/N=(256*512) OneD_trgt
+	Make/O/N = (256,512) trgt_scaled
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
 	trgt_scaled = -1 * (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
-	make/n=0 mean_ht_to_dig
+	make/o/n=0 mean_ht_to_dig
     	return 0            // Success
 End
 
@@ -307,7 +310,7 @@ Function LoadExcelButton(ba) : ButtonControl // Handles Load Excel sheet queries
 	switch(ba.eventCode)
 		case 2: // Mouse up
 			if (CmpStr(ba.ctrlName,"bLoad") == 0)
-				ImportExcel("","","","A1","IV256")
+				ImportExcel("","","","A1","IV512")
 			endif
 		break
 	endswitch
@@ -319,7 +322,7 @@ Function InitButton(ba) : ButtonControl // Handles Reset Experiment queries
 	switch(ba.eventCode)
 		case 2: // Mouse up
 			if (CmpStr(ba.ctrlName,"bInit") == 0)
-				//InitCustomScan()
+				InitCustomScan()
 			endif
 		break
 	endswitch
