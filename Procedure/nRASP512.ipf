@@ -8,11 +8,8 @@
 #include ":AsylumResearch:Code3D:Environ"
 
 // TODO: 
-// Make the masked portion the entire middle section (so no borders on top)
-// i.e. apply force in a vertical rectangle
 // Maybe do something to remove bumps at the start
 // i.e. normalize everything above zero for the first
-
 
 Override Function/S LithoDriveDAC(TipParms)
         Struct ARTipHolderParms &TipParms
@@ -183,7 +180,7 @@ function expandInput(smallWave, outWave, padding, shiftRight)
 
 	for (i = padding + shiftRight; i < 512 - padding + shiftRight; i+=1)
 		for (j = 0; j < 512; j+=1)
-			outWave[i][j] = smallWave[i - padding][j]
+			outWave[i][j] = smallWave[i - padding - shiftRight][j]
 		endfor
 	endfor	
 end
@@ -289,6 +286,8 @@ Function ResetExp()
 	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
 	NVAR should_we_finish = dfr:should_we_finish
 	should_we_finish = 0
+	SetDataFolder root:Packages:MFP3D:XPT:Cypher
+	make/o/n=0 mean_ht_to_dig
 End
 
 
@@ -335,7 +334,7 @@ End
 
 Function NanoRASP_Panel() : Panel
 	PauseUpdate; Silent 1		// building window...
-	 DFREF dfr = GetPackageDFREF()
+	DFREF dfr = GetPackageDFREF()
 	NewPanel /W=(730,94,1347,363) as "NanoRASP Panel"
 	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=4, frameInset=3
 	ShowTools/A
