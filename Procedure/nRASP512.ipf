@@ -267,8 +267,8 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
    	MatrixTranspose $finalWave
 	Reverse/DIM=1/P $finalWave
     	Printf "Created numeric matrix wave %s containing cells %s to %s in worksheet \"%s\"\r", finalWave, startCell, endCell, worksheetName
-	Duplicate/Free/WAVE $finalwave, OneD_trgt
-	Duplicate/Free/WAVE $finalwave, TwoD_trgt
+	Duplicate/O/WAVE $finalwave, OneD_trgt
+	Duplicate/O/WAVE $finalwave, TwoD_trgt
 	Redimension/N=((512-2*padding)*512) OneD_trgt
 	Make/O/N = (512-2*padding,512) trgt_scaled
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
