@@ -47,10 +47,12 @@ Function/WAVE getForce()
 	NVAR VMAX = dfr:VMAX				// Max voltage allowed
 	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
 	NVAR padding = dfr:padding  // Size of border around digging (pixels)
-	NVAR DRIFT = dfr:DRIFT
+	NVAR X_DRIFT = dfr:X_DRIFT
+	NVAR Y_DRIFT = dfr:Y_DRIFT
+	
 	Variable vslope =  (10 ^ 9) * (VMAX - VTHRESHOLD) / DIGPFR	
 	print(num2str(512-2*padding))
-	Make/O/N = (512-2*padding, 512) ht_variance, v_scaled, v_limited, ht_to_dig
+	Make/O/N = (512-2*padding, 512) ht_variance, v_scaled, v_corrected, v_limited, ht_to_dig
 	performFlatten(ht_true)
 	shrinkInput(ht_true, ht_variance, padding)
 	
@@ -63,9 +65,12 @@ Function/WAVE getForce()
 	mean_ht_to_dig[dimsize(mean_ht_to_dig, 0) - 1] = mean_to_dig
 	print("mean to dig: " + num2str(mean_to_dig))
 
+	v_corrected = VSP
+	verticalShift(v_limited, v_corrected, Y_DRIFT)		// v_limited is shifted up or down, outputting v_corrected
+
 	Make/O/N=(512,512) lith_force
 	lith_force = VSP // Initialize all values to setpoint.  
-	expandInput(v_limited, lith_force, padding, DRIFT) // Imprint applied force using v_limited
+	expandInput(v_corrected, lith_force, padding, X_DRIFT) // Imprint applied force using v_limited
 	return lith_force
 end
 
@@ -185,6 +190,28 @@ function expandInput(smallWave, outWave, padding, shiftRight)
 	endfor	
 end
 
+function verticalShift(w, r, yShift)		// Positive yShift adds rows at bottom, deletes from top (shift up). Negative deletes from bottom and adds to top (shift down)
+	wave w, r
+	variable yShift
+	
+	variable i, j
+	if (yShift < 0)
+		for (i = 0; i < 512 + yShift; i+=1) // Add yshift because it is negative
+			for (j=0; j < 256; j+=1)
+				r[j][i] = w[j][i]
+			endfor
+		endfor
+	elseif (yShift > 0)
+		for (i = yShift; i < 512; i+=1)
+			for (j=0; j < 256; j+=1)
+				r[j][i] = w[j][i]
+			endfor
+		endfor
+	else
+		r = w
+	endif
+end
+
 Function/T GetFilename() // Returns name of current image file for access by GetForce()
 // TODO: get format_num from master pannel instead of img_num. Base Name + last 4 digits, same format as AFM files will be
 
@@ -205,6 +232,7 @@ Function/T GetFilename() // Returns name of current image file for access by Get
 End
 
 Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // Do this only once before starting, to load excel wave of target pattern into experiment
+	// Import an excel spreadsheet with 512 rows, 256 cols
 	// Common Function Call: FlipExcel("G:Igor Custom Procs:Hsquared:Code", "new Comparison AFM", "nmTarget", "A1", "IV256")
     	String pathName                     // Name of Igor symbolic path or "" to get dialog
     	String fileName                         // Name of file to load or "" to get dialog
@@ -270,7 +298,7 @@ Function/DF CreatePackageData() // Called only from GetPackageDFREF
 	Variable/G dfr:increment_check = 0
 	Variable/G dfr:trgt_depth = 25
 	Variable/G dfr:padding = 128
-	Variable/G dfr:DRIFT = 0
+	Variable/G dfr:X_DRIFT = 0
 	return dfr
 End
 
@@ -378,9 +406,13 @@ Function NanoRASP_Panel() : Panel
 	SetVariable padding,pos={450,142},size={150,16},title="Border Width (px)"
 	SetVariable padding,help={"Border size around where force is applied (pixels)"},font="Arial"
 	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
-	SetVariable drift,pos={300,142},size={150,16},title="Horiz Drift (px)"
-	SetVariable drift,help={"Horizontal offset due to tip drift"},font="Arial"
-	SetVariable drift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DRIFT
+	SetVariable xdrift,pos={300,142},size={150,16},title="Horiz Drift (px)"
+	SetVariable xdrift,help={"Horizontal offset due to tip drift"},font="Arial"
+	SetVariable xdrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':X_DRIFT
+	
+	SetVariable ydrift,pos={36,220},size={150,16},title="Vert Drift (px)"
+	SetVariable ydrift,help={"Vertical offset due to tip drift"},font="Arial"
+	SetVariable ydrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':Y_DRIFT
 End
 
 Function simulation(lith_force, test_data, iterations)
