@@ -66,7 +66,7 @@ Function/WAVE getForce()
 	print("mean to dig: " + num2str(mean_to_dig))
 
 	v_corrected = VSP
-	verticalShift(v_limited, v_corrected, Y_DRIFT)		// v_limited is shifted up or down, outputting v_corrected
+	verticalShift(v_limited, v_corrected, padding, Y_DRIFT)		// v_limited is shifted up or down, outputting v_corrected
 
 	Make/O/N=(512,512) lith_force
 	lith_force = VSP // Initialize all values to setpoint.  
@@ -190,20 +190,20 @@ function expandInput(smallWave, outWave, padding, shiftRight)
 	endfor	
 end
 
-function verticalShift(w, r, yShift)		// Positive yShift adds rows at bottom, deletes from top (shift up). Negative deletes from bottom and adds to top (shift down)
+function verticalShift(w, r, padding, yShift)		// Positive yShift adds rows at bottom, deletes from top (shift up). Negative deletes from bottom and adds to top (shift down)
 	wave w, r
-	variable yShift
+	variable padding, yShift
 	
 	variable i, j
 	if (yShift < 0)
 		for (i = 0; i < 512 + yShift; i+=1) // Add yshift because it is negative
-			for (j=0; j < 256; j+=1)
+			for (j=0; j < 512 - 2*padding; j+=1)
 				r[j][i] = w[j][i]
 			endfor
 		endfor
 	elseif (yShift > 0)
 		for (i = yShift; i < 512; i+=1)
-			for (j=0; j < 256; j+=1)
+			for (j=0; j < 512 - 2*padding; j+=1)
 				r[j][i] = w[j][i]
 			endfor
 		endfor
@@ -241,6 +241,8 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
     	String endCell                          // e.g., "J100"
     	String finalWave = "trgt"			// Name of the wave that will contain the info in igor memory
     	SetDataFolder root:Packages:MFP3D:XPT:Cypher
+    	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
+	NVAR padding = dfr:padding
     	if ((strlen(pathName)==0) || (strlen(fileName)==0))
         	// Display dialog looking for file.
         	Variable refNum
@@ -267,8 +269,8 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
     	Printf "Created numeric matrix wave %s containing cells %s to %s in worksheet \"%s\"\r", finalWave, startCell, endCell, worksheetName
 	Duplicate/Free/WAVE $finalwave, OneD_trgt
 	Duplicate/Free/WAVE $finalwave, TwoD_trgt
-	Redimension/N=(256*512) OneD_trgt
-	Make/O/N = (256,512) trgt_scaled
+	Redimension/N=((512-2*padding)*512) OneD_trgt
+	Make/O/N = (512-2*padding,512) trgt_scaled
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
 	trgt_scaled = -1 * (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
 	make/o/n=0 mean_ht_to_dig
@@ -299,6 +301,7 @@ Function/DF CreatePackageData() // Called only from GetPackageDFREF
 	Variable/G dfr:trgt_depth = 25
 	Variable/G dfr:padding = 128
 	Variable/G dfr:X_DRIFT = 0
+	Variable/G dfr:Y_DRIFT = 0
 	return dfr
 End
 
