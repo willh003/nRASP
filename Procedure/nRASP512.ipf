@@ -58,7 +58,7 @@ Function/WAVE getForce()
 	
 	ht_to_dig = ht_variance - trgt_scaled
 	v_scaled = (ht_to_dig * vslope) + VSP
-	v_limited = ( (v_scaled > VSP) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
+	v_limited = ( (v_scaled > VTHRESHOLD) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
 	
 	variable mean_to_dig = mean(ht_to_dig)
 	redimension/n = (dimsize(mean_ht_to_dig, 0) + 1) mean_ht_to_dig
@@ -67,10 +67,12 @@ Function/WAVE getForce()
 
 	v_corrected = VSP
 	verticalShift(v_limited, v_corrected, padding, Y_DRIFT)		// v_limited is shifted up or down, outputting v_corrected
+	// Y_DRIFT should be positive if shadows are on the bottom, neg if on top
 
 	Make/O/N=(512,512) lith_force
 	lith_force = VSP // Initialize all values to setpoint.  
 	expandInput(v_corrected, lith_force, padding, X_DRIFT) // Imprint applied force using v_limited
+	// X_DRIFT should be positive if shadows to the left, neg if shadows to the right
 	return lith_force
 end
 
@@ -232,7 +234,7 @@ Function/T GetFilename() // Returns name of current image file for access by Get
 End
 
 Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // Do this only once before starting, to load excel wave of target pattern into experiment
-	// Import an excel spreadsheet with 512 rows, 256 cols
+	// Import an excel spreadsheet with 512 rows, 256 cols (or more cols if more padding)
 	// Common Function Call: FlipExcel("G:Igor Custom Procs:Hsquared:Code", "new Comparison AFM", "nmTarget", "A1", "IV256")
     	String pathName                     // Name of Igor symbolic path or "" to get dialog
     	String fileName                         // Name of file to load or "" to get dialog
