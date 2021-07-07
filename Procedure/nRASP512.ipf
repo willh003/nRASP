@@ -54,7 +54,7 @@ Function/WAVE getForce()
 	print(num2str(512-2*padding))
 	Make/O/N = (512-2*padding, 512) ht_variance, v_scaled, v_corrected, v_limited, ht_to_dig
 	performFlatten(ht_true)
-	shrinkInput(ht_true, ht_variance, padding)
+	shrinkInput(ht_true, ht_variance, padding, X_DRIFT)
 	
 	ht_to_dig = ht_variance - trgt_scaled
 	v_scaled = (ht_to_dig * vslope) + VSP
@@ -71,7 +71,7 @@ Function/WAVE getForce()
 
 	Make/O/N=(512,512) lith_force
 	lith_force = VSP // Initialize all values to setpoint.  
-	expandInput(v_corrected, lith_force, padding, X_DRIFT) // Imprint applied force using v_limited
+	expandInput(v_corrected, lith_force, padding) // Imprint applied force using v_limited
 	// X_DRIFT should be positive if shadows to the left, neg if shadows to the right
 	return lith_force
 end
@@ -112,7 +112,7 @@ Function PerformFlatten(ImageWave)
 	Make/Free/N=(512,512) tempMask
 	zeroWave = 0
 	tempMask = 1
-	expandInput(zeroWave, tempMask, padding, 0)
+	expandInput(zeroWave, tempMask, padding)
 	
 	HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
 
@@ -172,22 +172,23 @@ Function HHMaskedFlatten(ImageWave,order,layer,TempParm,tempMask)
 End // HHMaskedFlatten
 
 
-Function shrinkInput(bigWave, outWave, padding)  // Take middle values from 512x512 wave (based on border size)
+Function shrinkInput(bigWave, outWave, padding, shiftRight)  // Take middle values from 512x512 wave (based on border size)
 	Wave bigWave, outWave
-	Variable padding
+	Variable padding, shiftRight // Shift due to horizontal drift (px)
 	Duplicate/O bigWave outWave
-	deletepoints/M=0 512-padding, padding, outWave
-	deletepoints/M=0 0, padding, outWave
+
+	deletepoints/M=0 512 - padding + shiftRight, padding + shiftRight, outWave
+	deletepoints/M=0 0, padding + shiftRight, outWave
 end
 
-function expandInput(smallWave, outWave, padding, shiftRight)
+function expandInput(smallWave, outWave, padding)
 	wave smallWave, outWave
-	variable padding, shiftRight // Shift due to horizontal drift (px)
+	variable padding 
 	variable i, j
 
-	for (i = padding + shiftRight; i < 512 - padding + shiftRight; i+=1)
+	for (i = padding; i < 512 - padding; i+=1)
 		for (j = 0; j < 512; j+=1)
-			outWave[i][j] = smallWave[i - padding - shiftRight][j]
+			outWave[i][j] = smallWave[i - padding][j]
 		endfor
 	endfor	
 end
