@@ -58,7 +58,7 @@ Function/WAVE getForce()
 	
 	ht_to_dig = ht_variance - trgt_scaled
 	v_scaled = (ht_to_dig * vslope) + VSP
-	v_limited = ( (v_scaled > VTHRESHOLD) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
+	v_limited = ( (v_scaled > VTHRESHOLD) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled >= VMAX) ) + ( (v_scaled <= VTHRESHOLD) * VSP )
 	
 	variable mean_to_dig = mean(ht_to_dig)
 	redimension/n = (dimsize(mean_ht_to_dig, 0) + 1) mean_ht_to_dig
