@@ -56,9 +56,10 @@ Function/WAVE getForce()
 	performFlatten(ht_true)
 	shrinkInput(ht_true, ht_variance, padding)
 	
+	print(num2str(vslope))
 	ht_to_dig = ht_variance - trgt_scaled
 	v_scaled = (ht_to_dig * vslope) + VSP
-	v_limited = ( (v_scaled > VTHRESHOLD) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled > VMAX) ) + ( (v_scaled <= VSP) * VSP )
+	v_limited = ( (v_scaled > VTHRESHOLD) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled >= VMAX) ) + ( (v_scaled <= VTHRESHOLD) * VSP )
 	
 	variable mean_to_dig = mean(ht_to_dig)
 	redimension/n = (dimsize(mean_ht_to_dig, 0) + 1) mean_ht_to_dig
@@ -176,18 +177,19 @@ Function shrinkInput(bigWave, outWave, padding)  // Take middle values from 512x
 	Wave bigWave, outWave
 	Variable padding
 	Duplicate/O bigWave outWave
-	deletepoints/M=0 512-padding, padding, outWave
+
+	deletepoints/M=0 512 - padding, padding, outWave
 	deletepoints/M=0 0, padding, outWave
 end
 
 function expandInput(smallWave, outWave, padding, shiftRight)
 	wave smallWave, outWave
-	variable padding, shiftRight // Shift due to horizontal drift (px)
+	variable padding, shiftRight
 	variable i, j
 
-	for (i = padding + shiftRight; i < 512 - padding + shiftRight; i+=1)
+	for (i = padding; i < 512 - padding; i+=1)
 		for (j = 0; j < 512; j+=1)
-			outWave[i][j] = smallWave[i - padding - shiftRight][j]
+			outWave[i + shiftRight][j] = smallWave[i - padding][j]
 		endfor
 	endfor	
 end
@@ -200,13 +202,13 @@ function verticalShift(w, r, padding, yShift)		// Positive yShift adds rows at b
 	if (yShift < 0)
 		for (i = 0; i < 512 + yShift; i+=1) // Add yshift because it is negative
 			for (j=0; j < 512 - 2*padding; j+=1)
-				r[j][i] = w[j][i]
+				r[j][i] = w[j][i-yShift]
 			endfor
 		endfor
 	elseif (yShift > 0)
 		for (i = yShift; i < 512; i+=1)
 			for (j=0; j < 512 - 2*padding; j+=1)
-				r[j][i] = w[j][i]
+				r[j][i] = w[j][i-yShift]
 			endfor
 		endfor
 	else
@@ -268,7 +270,6 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
     	Concatenate/KILL/O names, $finalWave    // Create matrix and kill 1D waves
    	MatrixTranspose $finalWave
 	Reverse/DIM=1/P $finalWave
-    	Printf "Created numeric matrix wave %s containing cells %s to %s in worksheet \"%s\"\r", finalWave, startCell, endCell, worksheetName
 	Duplicate/O/WAVE $finalwave, OneD_trgt
 	Duplicate/O/WAVE $finalwave, TwoD_trgt
 	Redimension/N=((512-2*padding)*512) OneD_trgt
@@ -276,6 +277,7 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
 	trgt_scaled = -1 * (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
 	make/o/n=0 mean_ht_to_dig
+	Printf "Created numeric matrix wave %s containing cells %s to %s in worksheet \"%s\"\r", finalWave, startCell, endCell, worksheetName
     	return 0            // Success
 End
 
