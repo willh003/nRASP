@@ -323,6 +323,7 @@ Function ResetExp()
 	should_we_finish = 0
 	SetDataFolder root:Packages:MFP3D:XPT:Cypher
 	make/o/n=0 mean_ht_to_dig
+	ARCheckFunc("ARUserCallbackMasterCheck_1", 1)
 End
 
 
@@ -401,7 +402,7 @@ Function NanoRASP_Panel() : Panel
 	SetVariable digpfr,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DIGPFR
 	Button bExp,pos={326,68},size={100,20},proc=ResetExpButton,title="Reset Experiment"
 	Button bExp,help={"Reset the experiment"}
-	Button bInit,pos={257,221},size={116,20},proc=InitButton,title="Initialize (Take Care!!)"
+	Button bInit,pos={257,221},size={168,20},proc=InitButton,title="Start nRASP Scan (Take Care!!)"
 	Button bInit,help={"Reset the experiment"}
 	SetVariable trgt_depth,pos={178,142},size={120,18},title="Target Depth"
 	SetVariable trgt_depth,help={"target depth"},font="Arial"
@@ -445,4 +446,12 @@ end
 Function reset()
 	wave test
 	duplicate/o test, ht_true
+end
+
+function editstructures_w()
+	Struct WMSetvariableAction f
+	f.SVAL = "initcustomscan()"
+	f.EventCode = 1
+	f.ctrlName = "ARUserCallbackImageDoneSetVar_1"
+	ARCallbackSetVarFunc(f)
 end
