@@ -329,7 +329,7 @@ Function ResetExp()
 	ARCheckFunc("ARUserCallbackMasterCheck_1", 1)
 End
 
-Function makeGraphs()
+Function MakeGraphs()
 	SetDataFolder root:Packages:MFP3D:XPT:Cypher
 	Wave lith_force, trgt_scaled, sd_ht_to_dig
 	duplicate/o lith_force, lith_force_TOGRAPH
@@ -398,6 +398,18 @@ Function MakeGraphsButton(ba) : ButtonControl // Handles Reset Experiment querie
 	return 0
 End
 
+Function ForceButton(ba) : ButtonControl // Handles Reset Experiment queries
+	STRUCT WMButtonAction &ba
+	switch(ba.eventCode)
+		case 2: // Mouse up
+			if (CmpStr(ba.ctrlName,"bForce") == 0)
+				getForce()
+			endif
+		break
+	endswitch
+	return 0
+End
+
 Menu "Macros" // Put panel in Macros menu
 	"nanoRASP Panel", NanoRASP_Panel()
 End
@@ -406,7 +418,7 @@ Function TabathaProc(name, tab)
 	String name
 	Variable tab
 	
-	Button bload, disable= (tab != 0)
+	Button bLoad, disable= (tab != 0)
 	SetVariable trgt_depth, disable= (tab != 0)
 	SetVariable xdrift, disable= (tab != 0)
 	SetVariable ydrift, disable= (tab != 0)
@@ -422,24 +434,24 @@ Function TabathaProc(name, tab)
 	SetVariable kval, disable= (tab!=2)
 	SetVariable dfchannel, disable= (tab!=2)
 	SetVariable htchannel, disable= (tab!=2)
-	SetVariable vprecontact, disable= (tab!=2)
+	Button bForce, disable= (tab!=2)
+	
 	
 	Button bExp, disable= (tab!=3)
 	Button bInit, disable= (tab!=3)
 	SetVariable img_num, disable= (tab!=3)
 	SetVariable total_images, disable= (tab!=3)
 End
-
-
 Function NanoRASP_Panel() : Panel
 	PauseUpdate; Silent 1		// building window...
-	NewPanel /W=(691,128,985,546) as "NanoRASP Panel"
+	NewPanel /W=(966,127,1260,545) as "NanoRASP Panel1"
 	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=4, frameInset=3
 	SetDrawLayer UserBack
 	SetDrawEnv fsize= 20,textrgb= (13056,13056,13056)
 	DrawText 26,342,"See NRASP documentation "
 	SetDrawEnv fsize= 20,textrgb= (13056,13056,13056)
 	DrawText 82,366,"for more info!!"
+	DFREF dfr = GetPackageDFREF()
 	TabControl Tabatha,pos={13,13},size={271,388},proc=TabathaProc
 	TabControl Tabatha,tabLabel(0)="Patterns",tabLabel(1)="Forces"
 	TabControl Tabatha,tabLabel(2)="Image Info",tabLabel(3)="Running",value= 0
@@ -457,33 +469,34 @@ Function NanoRASP_Panel() : Panel
 	SetVariable padding,help={"Border size around where force is applied (pixels)"}
 	SetVariable padding,font="Arial"
 	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
-	SetVariable vprecontact,pos={89,57},size={120,18},disable=1,title="Vprecontact"
+	SetVariable vprecontact,pos={92,56},size={120,18},disable=1,title="Vprecontact"
 	SetVariable vprecontact,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable vprecontact,font="Arial"
 	SetVariable vprecontact,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VPRECONTACT
-	SetVariable vsp,pos={103,87},size={82,18},disable=1,title="Vsp"
+	SetVariable vsp,pos={110,87},size={82,18},disable=1,title="Vsp"
 	SetVariable vsp,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable vsp,font="Arial"
 	SetVariable vsp,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VSP
-	SetVariable vthreshold,pos={83,56},size={120,18},disable=1,title="Vthreshold"
+	SetVariable vthreshold,pos={92,117},size={120,18},disable=1,title="Vthreshold"
 	SetVariable vthreshold,font="Arial"
 	SetVariable vthreshold,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VTHRESHOLD
-	SetVariable vmax,pos={100,117},size={91,18},disable=1,title="Vmax",font="Arial"
+	SetVariable vmax,pos={105,148},size={91,18},disable=1,title="Vmax",font="Arial"
 	SetVariable vmax,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VMAX
-	SetVariable digpfr,pos={48,147},size={201,18},disable=1,title="dig per V per frame (nm)"
+	SetVariable digpfr,pos={53,176},size={201,18},disable=1,title="dig per V per frame (nm)"
 	SetVariable digpfr,font="Arial"
 	SetVariable digpfr,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DIGPFR
-	Button bGraph,pos={43,181},size={210,31},disable=1,proc=MakeGraphsButton,title="Make force, target graphs"
-	SetVariable kval,pos={68,87},size={170,18},disable=1,title="ratio real:preset invols"
+	Button bGraph,pos={44,206},size={210,31},disable=1,proc=MakeGraphsButton,title="Make force, target graphs"
+	Button bForce,pos={45,155},size={210,31},disable=1,proc=ForceButton,title="Get Force To Be Applied"
+	SetVariable kval,pos={62,58},size={176,18},disable=1,title="Ratio real:preset invols"
 	SetVariable kval,font="Arial"
 	SetVariable kval,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':KVAL
-	SetVariable dfchannel,pos={85,117},size={130,18},disable=1,title="deflection channel"
+	SetVariable dfchannel,pos={80,88},size={134,18},disable=1,title="Deflection channel"
 	SetVariable dfchannel,font="Arial"
 	SetVariable dfchannel,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DFCHANNEL
-	SetVariable htchannel,pos={90,146},size={113,18},disable=1,title="height channel"
+	SetVariable htchannel,pos={87,117},size={117,18},disable=1,title="Height channel"
 	SetVariable htchannel,font="Arial"
 	SetVariable htchannel,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':HTCHANNEL
-	Button bExp,pos={72,130},size={147,31},disable=1,proc=ResetExpButton,title="New nRASP Pattern"
+	Button bExp,pos={72,133},size={147,31},disable=1,proc=ResetExpButton,title="New nRASP Experiment"
 	Button bExp,help={"Reset the experiment"}
 	Button bInit,pos={56,260},size={182,43},disable=1,proc=InitButton,title="Start nRASP Scan"
 	Button bInit,help={"Reset the experiment"},font="Candara",fSize=18,fStyle=1
@@ -495,7 +508,6 @@ Function NanoRASP_Panel() : Panel
 	SetVariable total_images,font="Arial"
 	SetVariable total_images,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images
 End
-
 
 Function simulation(lith_force, test_data, iterations)
 	Wave lith_force, test_data
