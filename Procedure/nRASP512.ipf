@@ -485,7 +485,7 @@ Function NanoRASP_Panel() : Panel
 	SetVariable htchannel,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':HTCHANNEL
 	Button bExp,pos={72,130},size={147,31},disable=1,proc=ResetExpButton,title="New nRASP Pattern"
 	Button bExp,help={"Reset the experiment"}
-	Button bInit,pos={56,269},size={182,43},disable=1,proc=InitButton,title="Start nRASP Scan"
+	Button bInit,pos={56,260},size={182,43},disable=1,proc=InitButton,title="Start nRASP Scan"
 	Button bInit,help={"Reset the experiment"},font="Candara",fSize=18,fStyle=1
 	SetVariable img_num,pos={64,64},size={168,18},disable=1,title="Current nRASP Step"
 	SetVariable img_num,font="Arial"
