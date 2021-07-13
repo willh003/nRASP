@@ -269,7 +269,7 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
     	//String nameOut = UniqueName(finalWave, 1, 0)
     	Concatenate/KILL/O names, $finalWave    // Create matrix and kill 1D waves
    	MatrixTranspose $finalWave
-	Reverse/DIM=1/P $finalWave
+//	Reverse/DIM=1/P $finalWave
 	Duplicate/O/WAVE $finalwave, OneD_trgt
 	Duplicate/O/WAVE $finalwave, TwoD_trgt
 	Redimension/N=((512-2*padding)*512) OneD_trgt
@@ -306,6 +306,7 @@ Function/DF CreatePackageData() // Called only from GetPackageDFREF
 	Variable/G dfr:padding = 128
 	Variable/G dfr:X_DRIFT = 0
 	Variable/G dfr:Y_DRIFT = 0
+	Variable/G dfr:VPRECONTACT = -1
 	return dfr
 End
 
@@ -364,6 +365,18 @@ Function InitButton(ba) : ButtonControl // Handles Reset Experiment queries
 	return 0
 End
 
+Function MakeGraphsButton(ba) : ButtonControl // Handles Reset Experiment queries
+	STRUCT WMButtonAction &ba
+	switch(ba.eventCode)
+		case 2: // Mouse up
+			if (CmpStr(ba.ctrlName,"bGraph") == 0)
+				MakeGraphs()
+			endif
+		break
+	endswitch
+	return 0
+End
+
 Menu "Macros" // Put panel in Macros menu
 	"nanoRASP Panel", NanoRASP_Panel()
 End
@@ -376,19 +389,26 @@ Function NanoRASP_Panel() : Panel
 	ShowTools/A
 	SetDrawLayer UserBack
 	SetDrawEnv fsize= 16
-	DrawText 256,32,"NanoRASP Panel"
+//	TabControl InitSettings
+	//DrawText 256,32,"NanoRASP Panel"
 	DrawText 153,53,"Hover over values for more info, or see NRASP documentation"
-	Button bLoad,pos={205,68},size={100,20},proc=LoadExcelButton,title="Load Excel Data"
-	SetVariable vmax,pos={318,104},size={120,18},title="vmax",font="Arial"
+	Button bLoad,pos={205,68},size={100,20},proc=LoadExcelButton,title="Load Excel Pattern"
+	SetVariable vmax,pos={318,104},size={120,18},title="Vmax",font="Arial"
 	SetVariable vmax,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VMAX
-	SetVariable vsp,pos={180,105},size={120,18},title="vsp"
+	SetVariable vsp,pos={180,105},size={120,18},title="Vsp"
 	SetVariable vsp,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable vsp,font="Arial"
 	SetVariable vsp,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VSP
-	SetVariable vthreshold,pos={38,106},size={120,18},title="vthreshold"
+	
+		SetVariable Vprecontact,pos={200,105},size={120,18},title="Vprecontact"
+	SetVariable Vprecontact,help={"Setpoint voltage (applied when difference=0)"}
+	SetVariable Vprecontact,font="Arial"
+	SetVariable Vprecontact,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VPRECONTACT
+	
+	SetVariable vthreshold,pos={38,106},size={120,18},title="Vthreshold"
 	SetVariable vthreshold,font="Arial"
 	SetVariable vthreshold,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VTHRESHOLD
-	SetVariable kval,pos={36,142},size={137,18},title="kval",font="Arial"
+	SetVariable kval,pos={36,142},size={137,18},title="ratio real:preset invols",font="Arial"
 	SetVariable kval,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':KVAL
 	SetVariable dfchannel,pos={319,180},size={130,18},title="deflection channel"
 	SetVariable dfchannel,font="Arial"
@@ -396,14 +416,16 @@ Function NanoRASP_Panel() : Panel
 	SetVariable htchannel,pos={463,180},size={113,18},title="height channel"
 	SetVariable htchannel,font="Arial"
 	SetVariable htchannel,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':HTCHANNEL
-	SetVariable img_num,pos={35,180},size={120,18},font="Arial"
+	SetVariable img_num,pos={35,180},size={120,18},font="Arial",title="Current nRASP Step"
 	SetVariable img_num,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':img_num
-	SetVariable digpfr,pos={452,103},size={120,18},font="Arial"
+	SetVariable digpfr,pos={452,103},size={120,18},font="Arial", title="dig per V per frame (nm)"
 	SetVariable digpfr,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DIGPFR
-	Button bExp,pos={326,68},size={100,20},proc=ResetExpButton,title="Reset Experiment"
+	Button bExp,pos={326,68},size={100,20},proc=ResetExpButton,title="New nRASP Pattern"
 	Button bExp,help={"Reset the experiment"}
-	Button bInit,pos={257,221},size={168,20},proc=InitButton,title="Start nRASP Scan (Take Care!!)"
+	Button bInit,pos={257,221},size={168,20},proc=InitButton,title="Start nRASP Scan (1st Close Data Browser!!)"
 	Button bInit,help={"Reset the experiment"}
+	Button bGraph,pos={305,68},size={100,20},proc=MakeGraphsButton,title="Make force, target graphs"
+	
 	SetVariable trgt_depth,pos={178,142},size={120,18},title="Target Depth"
 	SetVariable trgt_depth,help={"target depth"},font="Arial"
 	SetVariable trgt_depth,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth
@@ -411,17 +433,59 @@ Function NanoRASP_Panel() : Panel
 	SetVariable total_images,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable total_images,font="Arial"
 	SetVariable total_images,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images
-	SetVariable padding,pos={450,142},size={150,16},title="Border Width (px)"
+	SetVariable padding,pos={450,142},size={150,16},title="Pad Width (px each side)"
 	SetVariable padding,help={"Border size around where force is applied (pixels)"},font="Arial"
 	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
-	SetVariable xdrift,pos={300,142},size={150,16},title="Horiz Drift (px)"
+	SetVariable xdrift,pos={300,142},size={150,16},title="X Drift (px)"
 	SetVariable xdrift,help={"Horizontal offset due to tip drift"},font="Arial"
 	SetVariable xdrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':X_DRIFT
 	
-	SetVariable ydrift,pos={36,220},size={150,16},title="Vert Drift (px)"
+	SetVariable ydrift,pos={36,220},size={150,16},title="Y Drift (px)"
 	SetVariable ydrift,help={"Vertical offset due to tip drift"},font="Arial"
 	SetVariable ydrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':Y_DRIFT
 End
+
+Function makeGraphPanel() : Panel
+	PauseUpdate; Silent 1		// building window...
+	DFREF dfr = GetPackageDFREF()
+	NewPanel /W=(730,94,1347,363) as "trgt_scaled & lith_force"
+	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=4, frameInset=3
+	ShowTools/A
+	SetDrawLayer UserBack
+	SetDrawEnv fsize= 16
+	
+	wave lith_force, trgt_scaled
+	duplicate/o lith_force, lith_force_TOGRAPH
+	duplicate/o trgt_scaled, trgt_scaled_TOGRAPH
+	
+	Reverse/DIM=1/P lith_force_TOGRAPH, trgt_scaled_TOGRAPH
+	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
+	NVAR VMAX = dfr:VMAX				// Max voltage allowed
+	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
+	lith_force_TOGRAPH[511][511] = VMAX
+	lith_force_TOGRAPH[511][510] = VSP
+
+	appendimage lith_force_TOGRAPH
+	 appendimage trgt_scaled_TOGRAPH
+End
+
+Function makeGraphs()
+	Wave lith_force, trgt_scaled
+	duplicate/o lith_force, lith_force_TOGRAPH
+	duplicate/o trgt_scaled, trgt_scaled_TOGRAPH
+	
+	Reverse/DIM=1/P lith_force_TOGRAPH, trgt_scaled_TOGRAPH
+	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
+	NVAR VMAX = dfr:VMAX				// Max voltage allowed
+	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
+	lith_force_TOGRAPH[511][511] = VMAX
+	lith_force_TOGRAPH[511][510] = VSP
+
+	display/N=Force_to_be_applied; appendimage lith_force_TOGRAPH
+	display/N=Target_image; appendimage trgt_scaled_TOGRAPH
+	
+End
+
 
 Function simulation(lith_force, test_data, iterations)
 	Wave lith_force, test_data
@@ -448,6 +512,7 @@ Function reset()
 	duplicate/o test, ht_true
 end
 
+
 function editstructures_w()
 	Struct WMSetvariableAction f
 	f.SVAL = "initcustomscan()"
@@ -455,3 +520,5 @@ function editstructures_w()
 	f.ctrlName = "ARUserCallbackImageDoneSetVar_1"
 	ARCallbackSetVarFunc(f)
 end
+
+
