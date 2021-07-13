@@ -39,7 +39,7 @@ End		//InitCustomScan()
 Function/WAVE getForce()
 	SetDataFolder root:Packages:MFP3D:XPT:Cypher
 	getCurrentHeight()
-	Wave trgt_scaled, ht_true, mean_ht_to_dig
+	Wave trgt_scaled, ht_true, sd_ht_to_dig
 	
 	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
 	NVAR DIGPFR = dfr:DIGPFR			// Size of interval of heights (in nm) where voltage will start converging. Smaller = more gradient in lith_force
@@ -61,11 +61,13 @@ Function/WAVE getForce()
 	v_scaled = (ht_to_dig * vslope) + VSP
 	v_limited = ( (v_scaled > VTHRESHOLD) * (v_scaled < VMAX) * ( v_scaled ) ) + ( VMAX * (v_scaled >= VMAX) ) + ( (v_scaled <= VTHRESHOLD) * VSP )
 	
-	variable mean_to_dig = mean(ht_to_dig)
-	redimension/n = (dimsize(mean_ht_to_dig, 0) + 1) mean_ht_to_dig
-	mean_ht_to_dig[dimsize(mean_ht_to_dig, 0) - 1] = mean_to_dig
-	print("mean to dig: " + num2str(mean_to_dig))
-
+	MatrixOP/O sd_to_dig = sqrt(sum(ht_to_dig*ht_to_dig)/(padding*2*512-1))		// Standard Deviation of ht_true with respect to target, which should decrease as it approaches
+	redimension/n = (dimsize(sd_ht_to_dig, 0) + 1) sd_ht_to_dig
+	sd_ht_to_dig[dimsize(sd_ht_to_dig, 0) - 1] = sd_to_dig[0]
+	
+	print("standard deviation of ht_true with respect to target:")
+	print(sd_to_dig[0])
+	
 	v_corrected = VSP
 	verticalShift(v_limited, v_corrected, padding, Y_DRIFT)		// v_limited is shifted up or down, outputting v_corrected
 	// Y_DRIFT should be positive if shadows are on the bottom, neg if on top
@@ -276,7 +278,7 @@ Function ImportExcel(pathName, fileName, worksheetName, startCell, endCell) // D
 	Make/O/N = (512-2*padding,512) trgt_scaled
 	NVAR trgt_depth = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth   // Nanometers. Difference in low and high signal in target pattern TODO
 	trgt_scaled = -1 * (trgt_depth / (10^9)) * ((TwoD_trgt - waveMin(OneD_trgt)) / (waveMax(OneD_trgt) - waveMin(OneD_trgt)))
-	make/o/n=0 mean_ht_to_dig
+	make/o/n=0 sd_ht_to_dig
 	Printf "Created numeric matrix wave %s containing cells %s to %s in worksheet \"%s\"\r", finalWave, startCell, endCell, worksheetName
     	return 0            // Success
 End
@@ -323,9 +325,28 @@ Function ResetExp()
 	NVAR should_we_finish = dfr:should_we_finish
 	should_we_finish = 0
 	SetDataFolder root:Packages:MFP3D:XPT:Cypher
-	make/o/n=0 mean_ht_to_dig
+	make/o/n=0 sd_ht_to_dig
 	ARCheckFunc("ARUserCallbackMasterCheck_1", 1)
 End
+
+Function makeGraphs()
+	SetDataFolder root:Packages:MFP3D:XPT:Cypher
+	Wave lith_force, trgt_scaled, sd_ht_to_dig
+	duplicate/o lith_force, lith_force_TOGRAPH
+	duplicate/o trgt_scaled, trgt_scaled_TOGRAPH
+	
+	Reverse/DIM=1/P lith_force_TOGRAPH, trgt_scaled_TOGRAPH
+	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
+	NVAR VMAX = dfr:VMAX				// Max voltage allowed
+	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
+	lith_force_TOGRAPH[511][511] = VMAX
+	lith_force_TOGRAPH[511][510] = VSP
+
+	display/N=Force_to_be_applied; appendimage lith_force_TOGRAPH
+	display/N=Target_image; appendimage trgt_scaled_TOGRAPH
+	display/N=StandardDeviationHeight sd_ht_to_dig
+End
+
 
 
 Function ResetExpButton(ba) : ButtonControl // Handles Reset Experiment queries
@@ -381,109 +402,98 @@ Menu "Macros" // Put panel in Macros menu
 	"nanoRASP Panel", NanoRASP_Panel()
 End
 
+Function TabathaProc(name, tab)
+	String name
+	Variable tab
+	
+	Button bload, disable= (tab != 0)
+	SetVariable trgt_depth, disable= (tab != 0)
+	SetVariable xdrift, disable= (tab != 0)
+	SetVariable ydrift, disable= (tab != 0)
+	SetVariable padding, disable= (tab != 0)
+	
+	SetVariable vprecontact, disable= (tab!=1)
+	SetVariable vsp, disable= (tab!=1)
+	SetVariable vthreshold, disable= (tab!=1)
+	SetVariable vmax, disable= (tab!=1)
+	SetVariable digpfr, disable= (tab!=1)
+	
+	Button bGraph, disable= (tab!=2)
+	SetVariable kval, disable= (tab!=2)
+	SetVariable dfchannel, disable= (tab!=2)
+	SetVariable htchannel, disable= (tab!=2)
+	SetVariable vprecontact, disable= (tab!=2)
+	
+	Button bExp, disable= (tab!=3)
+	Button bInit, disable= (tab!=3)
+	SetVariable img_num, disable= (tab!=3)
+	SetVariable total_images, disable= (tab!=3)
+End
+
+
 Function NanoRASP_Panel() : Panel
 	PauseUpdate; Silent 1		// building window...
-	DFREF dfr = GetPackageDFREF()
-	NewPanel /W=(730,94,1347,363) as "NanoRASP Panel"
+	NewPanel /W=(691,128,985,546) as "NanoRASP Panel"
 	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=4, frameInset=3
-	ShowTools/A
 	SetDrawLayer UserBack
-	SetDrawEnv fsize= 16
-//	TabControl InitSettings
-	//DrawText 256,32,"NanoRASP Panel"
-	DrawText 153,53,"Hover over values for more info, or see NRASP documentation"
-	Button bLoad,pos={205,68},size={100,20},proc=LoadExcelButton,title="Load Excel Pattern"
-	SetVariable vmax,pos={318,104},size={120,18},title="Vmax",font="Arial"
-	SetVariable vmax,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VMAX
-	SetVariable vsp,pos={180,105},size={120,18},title="Vsp"
+	SetDrawEnv fsize= 20,textrgb= (13056,13056,13056)
+	DrawText 26,342,"See NRASP documentation "
+	SetDrawEnv fsize= 20,textrgb= (13056,13056,13056)
+	DrawText 82,366,"for more info!!"
+	TabControl Tabatha,pos={13,13},size={271,388},proc=TabathaProc
+	TabControl Tabatha,tabLabel(0)="Patterns",tabLabel(1)="Forces"
+	TabControl Tabatha,tabLabel(2)="Image Info",tabLabel(3)="Running",value= 0
+	Button bLoad,pos={76,126},size={134,40},proc=LoadExcelButton,title="Load Excel Pattern"
+	SetVariable trgt_depth,pos={81,57},size={120,18},title="Target Depth"
+	SetVariable trgt_depth,help={"target depth"},font="Arial"
+	SetVariable trgt_depth,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth
+	SetVariable xdrift,pos={68,185},size={150,18},title="X Drift (px)"
+	SetVariable xdrift,help={"Horizontal offset due to tip drift"},font="Arial"
+	SetVariable xdrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':X_DRIFT
+	SetVariable ydrift,pos={68,213},size={150,18},title="Y Drift (px)"
+	SetVariable ydrift,help={"Vertical offset due to tip drift"},font="Arial"
+	SetVariable ydrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':Y_DRIFT
+	SetVariable padding,pos={46,90},size={193,18},title="Pad Width (px each side)"
+	SetVariable padding,help={"Border size around where force is applied (pixels)"}
+	SetVariable padding,font="Arial"
+	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
+	SetVariable vprecontact,pos={89,57},size={120,18},disable=1,title="Vprecontact"
+	SetVariable vprecontact,help={"Setpoint voltage (applied when difference=0)"}
+	SetVariable vprecontact,font="Arial"
+	SetVariable vprecontact,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VPRECONTACT
+	SetVariable vsp,pos={103,87},size={82,18},disable=1,title="Vsp"
 	SetVariable vsp,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable vsp,font="Arial"
 	SetVariable vsp,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VSP
-	
-		SetVariable Vprecontact,pos={200,105},size={120,18},title="Vprecontact"
-	SetVariable Vprecontact,help={"Setpoint voltage (applied when difference=0)"}
-	SetVariable Vprecontact,font="Arial"
-	SetVariable Vprecontact,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VPRECONTACT
-	
-	SetVariable vthreshold,pos={38,106},size={120,18},title="Vthreshold"
+	SetVariable vthreshold,pos={83,56},size={120,18},disable=1,title="Vthreshold"
 	SetVariable vthreshold,font="Arial"
 	SetVariable vthreshold,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VTHRESHOLD
-	SetVariable kval,pos={36,142},size={137,18},title="ratio real:preset invols",font="Arial"
+	SetVariable vmax,pos={100,117},size={91,18},disable=1,title="Vmax",font="Arial"
+	SetVariable vmax,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':VMAX
+	SetVariable digpfr,pos={48,147},size={201,18},disable=1,title="dig per V per frame (nm)"
+	SetVariable digpfr,font="Arial"
+	SetVariable digpfr,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DIGPFR
+	Button bGraph,pos={43,181},size={210,31},disable=1,proc=MakeGraphsButton,title="Make force, target graphs"
+	SetVariable kval,pos={68,87},size={170,18},disable=1,title="ratio real:preset invols"
+	SetVariable kval,font="Arial"
 	SetVariable kval,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':KVAL
-	SetVariable dfchannel,pos={319,180},size={130,18},title="deflection channel"
+	SetVariable dfchannel,pos={85,117},size={130,18},disable=1,title="deflection channel"
 	SetVariable dfchannel,font="Arial"
 	SetVariable dfchannel,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DFCHANNEL
-	SetVariable htchannel,pos={463,180},size={113,18},title="height channel"
+	SetVariable htchannel,pos={90,146},size={113,18},disable=1,title="height channel"
 	SetVariable htchannel,font="Arial"
 	SetVariable htchannel,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':HTCHANNEL
-	SetVariable img_num,pos={35,180},size={120,18},font="Arial",title="Current nRASP Step"
-	SetVariable img_num,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':img_num
-	SetVariable digpfr,pos={452,103},size={120,18},font="Arial", title="dig per V per frame (nm)"
-	SetVariable digpfr,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':DIGPFR
-	Button bExp,pos={326,68},size={100,20},proc=ResetExpButton,title="New nRASP Pattern"
+	Button bExp,pos={72,130},size={147,31},disable=1,proc=ResetExpButton,title="New nRASP Pattern"
 	Button bExp,help={"Reset the experiment"}
-	Button bInit,pos={257,221},size={168,20},proc=InitButton,title="Start nRASP Scan (1st Close Data Browser!!)"
-	Button bInit,help={"Reset the experiment"}
-	Button bGraph,pos={305,68},size={100,20},proc=MakeGraphsButton,title="Make force, target graphs"
-	
-	SetVariable trgt_depth,pos={178,142},size={120,18},title="Target Depth"
-	SetVariable trgt_depth,help={"target depth"},font="Arial"
-	SetVariable trgt_depth,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth
-	SetVariable total_images,pos={187,180},size={120,18},title="Total Images"
+	Button bInit,pos={56,269},size={182,43},disable=1,proc=InitButton,title="Start nRASP Scan"
+	Button bInit,help={"Reset the experiment"},font="Candara",fSize=18,fStyle=1
+	SetVariable img_num,pos={64,64},size={168,18},disable=1,title="Current nRASP Step"
+	SetVariable img_num,font="Arial"
+	SetVariable img_num,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':img_num
+	SetVariable total_images,pos={86,98},size={123,18},disable=1,title="Total Images"
 	SetVariable total_images,help={"Setpoint voltage (applied when difference=0)"}
 	SetVariable total_images,font="Arial"
 	SetVariable total_images,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':total_images
-	SetVariable padding,pos={450,142},size={150,16},title="Pad Width (px each side)"
-	SetVariable padding,help={"Border size around where force is applied (pixels)"},font="Arial"
-	SetVariable padding,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':padding
-	SetVariable xdrift,pos={300,142},size={150,16},title="X Drift (px)"
-	SetVariable xdrift,help={"Horizontal offset due to tip drift"},font="Arial"
-	SetVariable xdrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':X_DRIFT
-	
-	SetVariable ydrift,pos={36,220},size={150,16},title="Y Drift (px)"
-	SetVariable ydrift,help={"Vertical offset due to tip drift"},font="Arial"
-	SetVariable ydrift,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':Y_DRIFT
-End
-
-Function makeGraphPanel() : Panel
-	PauseUpdate; Silent 1		// building window...
-	DFREF dfr = GetPackageDFREF()
-	NewPanel /W=(730,94,1347,363) as "trgt_scaled & lith_force"
-	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=4, frameInset=3
-	ShowTools/A
-	SetDrawLayer UserBack
-	SetDrawEnv fsize= 16
-	
-	wave lith_force, trgt_scaled
-	duplicate/o lith_force, lith_force_TOGRAPH
-	duplicate/o trgt_scaled, trgt_scaled_TOGRAPH
-	
-	Reverse/DIM=1/P lith_force_TOGRAPH, trgt_scaled_TOGRAPH
-	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
-	NVAR VMAX = dfr:VMAX				// Max voltage allowed
-	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
-	lith_force_TOGRAPH[511][511] = VMAX
-	lith_force_TOGRAPH[511][510] = VSP
-
-	appendimage lith_force_TOGRAPH
-	 appendimage trgt_scaled_TOGRAPH
-End
-
-Function makeGraphs()
-	Wave lith_force, trgt_scaled
-	duplicate/o lith_force, lith_force_TOGRAPH
-	duplicate/o trgt_scaled, trgt_scaled_TOGRAPH
-	
-	Reverse/DIM=1/P lith_force_TOGRAPH, trgt_scaled_TOGRAPH
-	DFREF dfr = root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals'
-	NVAR VMAX = dfr:VMAX				// Max voltage allowed
-	NVAR VSP = dfr:VSP					// Setpoint voltage (what to apply when diff = 0)
-	lith_force_TOGRAPH[511][511] = VMAX
-	lith_force_TOGRAPH[511][510] = VSP
-
-	display/N=Force_to_be_applied; appendimage lith_force_TOGRAPH
-	display/N=Target_image; appendimage trgt_scaled_TOGRAPH
-	
 End
 
 
