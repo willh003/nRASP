@@ -483,7 +483,7 @@ Function NanoRASP_Panel() : Panel
 	NewPath/O pict_data, "D:Asylum User:nRASP:Hsquared:PicsToLoad"
 	LoadPict/Q/O/P=pict_data "nRASP_panel_logo.png", nRASP_logo
 	PauseUpdate; Silent 1		// building window...
-	NewPanel /W=(1476,525,1764,949) as "NanoRASP Panel1"
+	NewPanel /W=(1476,525,1764,949) as "NanoRASP Panel"
 	ModifyPanel cbRGB=(65534,65534,65534), frameStyle=1, frameInset=3
 	SetDrawLayer UserBack
 	SetDrawEnv fsize= 20,textrgb= (13056,13056,13056)
