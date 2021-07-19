@@ -76,6 +76,7 @@ Function/WAVE getForce()
 	lith_force = VSP // Initialize all values to setpoint.  
 	expandInput(v_corrected, lith_force, padding, X_DRIFT) // Imprint applied force using v_limited
 	// X_DRIFT should be positive if shadows to the left, neg if shadows to the right
+	duplicate/o lith_force, lith_force_TOGRAPH
 	return lith_force
 end
 
@@ -450,7 +451,7 @@ Function simulation(lith_force, test_data, iterations)
 	Variable DIGPFR_actual = 1
 	Variable i = 0
 	Variable mean_height
-	
+	make/o/n=0 mean_ht_to_dig
 	do 
 		getForce()
 		test_data -= lith_force * DIGPFR_actual / (10^9)
@@ -495,8 +496,8 @@ Function NanoRASP_Panel() : Panel
 	TabControl Tabatha,tabLabel(0)="Patterns",tabLabel(1)="Forces"
 	TabControl Tabatha,tabLabel(2)="Image Info",tabLabel(3)="Running",value= 0
 	Button bLoad,pos={75,125},size={134,40},proc=LoadExcelButton,title="Load Excel Pattern"	
-	SetVariable trgt_depth,pos={80,56},size={120,18},title="Target Depth"
-	SetVariable trgt_depth,help={"target depth"},font="Arial"
+	SetVariable trgt_depth,pos={76,56},size={135,18},title="Target Depth"
+	SetVariable trgt_depth,help={"target depth (nm)"},font="Arial"
 	SetVariable trgt_depth,value= root:packages:MFP3D:XPT:Cypher:GlobalVars:'My Globals':trgt_depth
 	SetVariable xdrift,pos={67,184},size={150,18},title="X Drift (px)"
 	SetVariable xdrift,help={"Horizontal offset due to tip drift"},font="Arial"
